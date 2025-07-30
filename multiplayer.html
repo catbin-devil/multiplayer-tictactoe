@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>멀티플레이어 틱택토</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .menu {
+            background: rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            margin: 10px;
+            border-radius: 25px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .input {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1.1em;
+            margin: 10px;
+            text-align: center;
+            background: rgba(255,255,255,0.9);
+            color: #333;
+        }
+
+        .game-area {
+            display: none;
+            background: rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+        }
+
+        .game-info {
+            margin-bottom: 20px;
+            font-size: 1.2em;
+        }
+
+        .player-info {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 15px;
+        }
+
+        .player {
+            text-align: center;
+        }
+
+        .player.active {
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            padding: 10px;
+        }
+
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 5px;
+            width: 300px;
+            height: 300px;
+            margin: 20px auto;
+            background-color: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 5px;
+        }
+
+        .cell {
+            background-color: rgba(255,255,255,0.9);
+            border: none;
+            border-radius: 5px;
+            font-size: 3em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: #333;
+        }
+
+        .cell:hover {
+            background-color: rgba(255,255,255,1);
+            transform: scale(0.95);
+        }
+
+        .cell:disabled {
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        .status {
+            font-size: 1.3em;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+
+        .room-id {
+            background: rgba(255,255,255,0.2);
+            padding: 10px 20px;
+            border-radius: 15px;
+            font-size: 1.2em;
+            margin: 10px 0;
+        }
+
+        .error {
+            color: #ff6b6b;
+            background: rgba(255,107,107,0.2);
+            padding: 10px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+
+        .success {
+            color: #4ecdc4;
+            background: rgba(78,205,196,0.2);
+            padding: 10px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 멀티플레이어 틱택토</h1>
+        
+        <!-- 메인 메뉴 -->
+        <div id="menu" class="menu">
+            <h2>게임 시작하기</h2>
+            <button class="btn" onclick="createRoom()">🏠 새 방 만들기</button>
+            <br>
+            <input type="text" id="roomInput" class="input" placeholder="방 코드 입력" maxlength="6">
+            <button class="btn" onclick="joinRoom()">🚪 방 참가하기</button>
+            <div id="message"></div>
+        </div>
+
+        <!-- 게임 화면 -->
+        <div id="gameArea" class="game-area">
+            <div class="room-id">
+                방 코드: <span id="currentRoomId"></span>
+                <button class="btn" onclick="copyRoomId()" style="font-size: 0.8em; padding: 5px 15px;">📋 복사</button>
+            </div>
+            
+            <div class="player-info">
+                <div class="player" id="playerX">
+                    <div>플레이어 X</div>
+                    <div style="font-size: 2em; color: #FF6B6B;">❌</div>
+                </div>
+                <div class="player" id="playerO">
+                    <div>플레이어 O</div>
+                    <div style="font-size: 2em; color: #4ECDC4;">⭕</div>
+                </div>
+            </div>
+
+            <div class="status" id="gameStatus">게임을 시작하세요!</div>
+
+            <div class="game-board" id="gameBoard">
+                <button class="cell" data-index="0" onclick="makeMove(0)"></button>
+                <button class="cell" data-index="1" onclick="makeMove(1)"></button>
+                <button class="cell" data-index="2" onclick="makeMove(2)"></button>
+                <button class="cell" data-index="3" onclick="makeMove(3)"></button>
+                <button class="cell" data-index="4" onclick="makeMove(4)"></button>
+                <button class="cell" data-index="5" onclick="makeMove(5)"></button>
+                <button class="cell" data-index="6" onclick="makeMove(6)"></button>
+                <button class="cell" data-index="7" onclick="makeMove(7)"></button>
+                <button class="cell" data-index="8" onclick="makeMove(8)"></button>
+            </div>
+
+            <button class="btn" onclick="goBackToMenu()">🏠 메인으로 돌아가기</button>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentRoomId = null;
+        let mySymbol = null;
+        let gameBoard = ['', '', '', '', '', '', '', '', ''];
+        let currentPlayer = 'X';
+        let isMyTurn = false;
+
+        // 새 방 만들기
+        function createRoom() {
+            socket.emit('create-room', (response) => {
+                if (response.success) {
+                    currentRoomId = response.roomId;
+                    mySymbol = response.symbol;
+                    showMessage(`방이 생성되었습니다! 방 코드: ${currentRoomId}`, 'success');
+                    showGameArea();
+                    updateGameStatus('친구가 참가하기를 기다리는 중...');
+                } else {
+                    showMessage('방 생성에 실패했습니다.', 'error');
+                }
+            });
+        }
+
+        // 방 참가하기
+        function joinRoom() {
+            const roomId = document.getElementById('roomInput').value.trim().toUpperCase();
+            if (!roomId) {
+                showMessage('방 코드를 입력해주세요.', 'error');
+                return;
+            }
+
+            socket.emit('join-room', roomId, (response) => {
+                if (response.success) {
+                    currentRoomId = response.roomId;
+                    mySymbol = response.symbol;
+                    showMessage('방에 성공적으로 참가했습니다!', 'success');
+                    showGameArea();
+                } else {
+                    showMessage(response.message, 'error');
+                }
+            });
+        }
+
+        // 게임 움직임
+        function makeMove(cellIndex) {
+            if (!isMyTurn || gameBoard[cellIndex] !== '') {
+                return;
+            }
+
+            socket.emit('make-move', {
+                roomId: currentRoomId,
+                cellIndex: cellIndex
+            });
+        }
+
+        // 메시지 표시
+        function showMessage(text, type = '') {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = text;
+            messageEl.className = type;
+        }
+
+        // 게임 화면 표시
+        function showGameArea() {
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('gameArea').style.display = 'block';
+            document.getElementById('currentRoomId').textContent = currentRoomId;
+        }
+
+        // 메인 메뉴로 돌아가기
+        function goBackToMenu() {
+            document.getElementById('menu').style.display = 'block';
+            document.getElementById('gameArea').style.display = 'none';
+            document.getElementById('roomInput').value = '';
+            currentRoomId = null;
+            mySymbol = null;
+            resetBoard();
+        }
+
+        // 게임 상태 업데이트
+        function updateGameStatus(status) {
+            document.getElementById('gameStatus').textContent = status;
+        }
+
+        // 게임 보드 리셋
+        function resetBoard() {
+            gameBoard = ['', '', '', '', '', '', '', '', ''];
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                cell.textContent = '';
+                cell.disabled = false;
+            });
+        }
+
+        // 방 코드 복사
+        function copyRoomId() {
+            navigator.clipboard.writeText(currentRoomId).then(() => {
+                showMessage('방 코드가 복사되었습니다!', 'success');
+                setTimeout(() => showMessage(''), 2000);
+            });
+        }
+
+        // Socket.io 이벤트 리스너들
+        socket.on('game-start', (data) => {
+            updateGameStatus('게임이 시작되었습니다!');
+            isMyTurn = mySymbol === 'X';
+            updateTurnIndicator();
+        });
+
+        socket.on('move-made', (data) => {
+            gameBoard = data.board;
+            currentPlayer = data.currentPlayer;
+            isMyTurn = mySymbol === currentPlayer;
+            
+            // 보드 업데이트
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach((cell, index) => {
+                cell.textContent = gameBoard[index] === 'X' ? '❌' : gameBoard[index] === 'O' ? '⭕' : '';
+            });
+            
+            updateTurnIndicator();
+        });
+
+        socket.on('game-over', (data) => {
+            gameBoard = data.board;
+            
+            // 보드 업데이트
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach((cell, index) => {
+                cell.textContent = gameBoard[index] === 'X' ? '❌' : gameBoard[index] === 'O' ? '⭕' : '';
+                cell.disabled = true;
+            });
+
+            if (data.isDraw) {
+                updateGameStatus('🤝 무승부입니다!');
+            } else {
+                const winner = data.winner === mySymbol ? '당신이' : '상대방이';
+                updateGameStatus(`🎉 ${winner} 승리했습니다!`);
+            }
+
+            // 3초 후 새 게임 시작
+            setTimeout(() => {
+                resetBoard();
+                isMyTurn = mySymbol === 'X';
+                updateTurnIndicator();
+            }, 3000);
+        });
+
+        socket.on('player-left', () => {
+            updateGameStatus('상대방이 나갔습니다. 새로운 플레이어를 기다리는 중...');
+            resetBoard();
+        });
+
+        socket.on('move-error', (message) => {
+            showMessage(message, 'error');
+            setTimeout(() => showMessage(''), 2000);
+        });
+
+        function updateTurnIndicator() {
+            const playerX = document.getElementById('playerX');
+            const playerO = document.getElementById('playerO');
+            
+            playerX.classList.remove('active');
+            playerO.classList.remove('active');
+            
+            if (currentPlayer === 'X') {
+                playerX.classList.add('active');
+            } else {
+                playerO.classList.add('active');
+            }
+            
+            if (isMyTurn) {
+                updateGameStatus('당신의 차례입니다!');
+            } else {
+                updateGameStatus('상대방의 차례입니다...');
+            }
+        }
+
+        console.log('멀티플레이어 틱택토 클라이언트가 로드되었습니다! 🎮');
+    </script>
+</body>
+</html>

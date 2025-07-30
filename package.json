@@ -1,0 +1,22 @@
+{
+    "name": "multiplayer-tictactoe",
+    "version": "1.0.0",
+    "description": "친구와 함께하는 실시간 틱택토 게임",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "node server.js"
+    },
+    "keywords": [
+        "game",
+        "tictactoe",
+        "multiplayer",
+        "socket.io"
+    ],
+    "author": "나",
+    "license": "MIT",
+    "dependencies": {
+        "express": "^4.21.2",
+        "socket.io": "^4.7.4"
+    }
+}
