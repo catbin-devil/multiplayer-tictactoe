@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>체스 - 멀티플레이어</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #2C3E50 0%, #34495E 100%);
+            min-height: 100vh;
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .header {
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .game-info {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        // chess.html에 추가할 CSS 및 JavaScript
+
+/* CSS 부분에 추가 */
+.game-board.flipped {
+    transform: rotate(180deg);
+}
+
+.game-board.flipped .cell {
+    transform: rotate(180deg);
+}
+
+.coordinates.flipped .rank-labels {
+    transform: rotate(180deg);
+    flex-direction: column-reverse;
+}
+
+.coordinates.flipped .file-labels {
+    transform: rotate(180deg);
+    flex-direction: row-reverse;
+}
+
+/* JavaScript 부분 수정 */
+
+// 게임 보드 생성 함수 수정
+function createGameBoard() {
+    const gameBoard = document.getElementById('gameBoard');
+    gameBoard.innerHTML = '';
+
+    for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+            const cell = document.createElement('button');
+            const index = row * 8 + col;
+            
+            cell.className = 'cell ' + ((row + col) % 2 === 0 ? 'light' : 'dark');
+            cell.dataset.index = index;
+            cell.onclick = () => handleCellClick(index);
+            
+            gameBoard.appendChild(cell);
+        }
+    }
+    
+    // 플레이어에 따라 보드 뒤집기
+    updateBoardOrientation();
+}
+
+// 보드 방향 업데이트 함수 (새로 추가)
+function updateBoardOrientation() {
+    const gameBoard = document.getElementById('gameBoard');
+    const coordinates = document.querySelector('.coordinates');
+    
+    if (mySymbol === 'black') {
+        // 블랙 플레이어는 보드를 뒤집어서 자기 기물이 아래에 오도록
+        gameBoard.classList.add('flipped');
+        if (coordinates) {
+            coordinates.classList.add('flipped');
+        }
+    } else {
+        // 화이트 플레이어는 정상 방향
+        gameBoard.classList.remove('flipped');
+        if (coordinates) {
+            coordinates.classList.remove('flipped');
+        }
+    }
+}
+
+// 게임 보드 업데이트 함수 수정
+function updateBoard() {
+    const cells = document.querySelectorAll('.cell');
+    cells.forEach((cell, index) => {
+        const piece = gameBoard[index];
+        cell.innerHTML = piece ? `<span class="piece">${pieceSymbols[piece] || piece}</span>` : '';
+        cell.disabled = !isMyTurn || !gameActive;
+    });
+    
+    deselectPiece(); // 선택 해제
+    updateBoardOrientation(); // 보드 방향 업데이트
+}
+
+// Socket 이벤트에서 보드 방향 업데이트 추가
+socket.on('game-start', (data) => {
+    gameActive = true;
+    gameBoard = data.gameBoard || [];
+    currentPlayer = data.currentPlayer || 'white';
+    isMyTurn = mySymbol === currentPlayer;
+    
+    document.getElementById('waitingArea').style.display = 'none';
+    document.getElementById('gameArea').style.display = 'block';
+    
+    updateBoard();
+    updateTurnIndicator();
+    updateCapturedPieces();
+    updateBoardOrientation(); // 여기에 추가
+    updateGameStatus('게임이 시작되었습니다!');
+    
+    setTimeout(() => {
+        updateTurnIndicator();
+    }, 2000);
+});
+
+// 좌표 라벨도 업데이트 (선택사항 - 더 정확한 표시를 위해)
+function updateCoordinateLabels() {
+    const rankLabels = document.querySelector('.rank-labels');
+    const fileLabels = document.querySelector('.file-labels');
+    
+    if (mySymbol === 'black') {
+        // 블랙 플레이어용 좌표 (뒤집힌 순서)
+        if (rankLabels) {
+            rankLabels.innerHTML = '<div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div>';
+        }
+        if (fileLabels) {
+            fileLabels.innerHTML = '<div>h</div><div>g</div><div>f</div><div>e</div><div>d</div><div>c</div><div>b</div><div>a</div>';
+        }
+    } else {
+        // 화이트 플레이어용 좌표 (정상 순서)
+        if (rankLabels) {
+            rankLabels.innerHTML = '<div>8</div><div>7</div><div>6</div><div>5</div><div>4</div><div>3</div><div>2</div><div>1</div>';
+        }
+        if (fileLabels) {
+            fileLabels.innerHTML = '<div>a</div><div>b</div><div>c</div><div>d</div><div>e</div><div>f</div><div>g</div><div>h</div>';
+        }
+    }
+}
+
+        .room-info {
+            text-align: center;
+        }
+
+        .room-code {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #FFD700;
+            margin-bottom: 5px;
+        }
+
+        .player-info {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .player {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.1);
+            min-width: 120px;
+        }
+
+        .player.active {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .player-symbol {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .player-label {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        .status {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin: 15px 0;
+            min-height: 30px;
+        }
+
+        .game-board-container {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+            overflow: auto;
+        }
+
+        .coordinates {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .rank-labels {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            height: 512px;
+            margin-right: 10px;
+            font-weight: bold;
+            color: #FFD700;
+        }
+
+        .file-labels {
+            display: flex;
+            justify-content: space-around;
+            width: 512px;
+            margin-top: 10px;
+            font-weight: bold;
+            color: #FFD700;
+        }
+
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            width: 512px;
+            height: 512px;
+            border: 3px solid #8B4513;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .cell {
+            width: 64px;
+            height: 64px;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5em;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .cell.light {
+            background-color: #F0D9B5;
+        }
+
+        .cell.dark {
+            background-color: #B58863;
+        }
+
+        .cell.selected {
+            background-color: #7FB069 !important;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
+        }
+
+        .cell.valid-move {
+            background-color: #87CEEB !important;
+        }
+
+        .cell.valid-move::after {
+            content: '●';
+            position: absolute;
+            color: rgba(0,0,0,0.4);
+            font-size: 1.5em;
+        }
+
+        .cell.capture-move {
+            background-color: #FFB6C1 !important;
+        }
+
+        .cell.capture-move::after {
+            content: '×';
+            position: absolute;
+            color: rgba(255,0,0,0.7);
+            font-size: 2em;
+            font-weight: bold;
+        }
+
+        .cell:hover:not(:disabled) {
+            filter: brightness(1.1);
+            transform: scale(1.05);
+        }
+
+        .cell:disabled {
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        .piece {
+            filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.5));
+        }
+
+        .captured-pieces {
+            display: flex;
+            justify-content: space-between;
+            margin: 20px 0;
+        }
+
+        .captured-section {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+            min-width: 200px;
+        }
+
+        .captured-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #FFD700;
+        }
+
+        .captured-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            font-size: 1.5em;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .btn.secondary {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        .waiting-message {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 30px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+        }
+
+        .waiting-spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #4ECDC4;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .game-rules {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            backdrop-filter: blur(10px);
+            text-align: left;
+        }
+
+        .rules-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+            color: #FFD700;
+        }
+
+        .rules-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .rules-list li {
+            margin: 10px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .rules-list li:before {
+            content: "♔";
+            position: absolute;
+            left: 0;
+            color: #4ECDC4;
+        }
+
+        .error {
+            background: rgba(255,107,107,0.2);
+            border: 1px solid rgba(255,107,107,0.5);
+            color: #ff6b6b;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            text-align: center;
+        }
+
+        .success {
+            background: rgba(78,205,196,0.2);
+            border: 1px solid rgba(78,205,196,0.5);
+            color: #4ecdc4;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            .game-board {
+                width: 400px;
+                height: 400px;
+            }
+            
+            .cell {
+                width: 50px;
+                height: 50px;
+                font-size: 2em;
+            }
+            
+            .rank-labels {
+                height: 400px;
+            }
+            
+            .file-labels {
+                width: 400px;
+            }
+            
+            .player-info {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .game-info {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .captured-pieces {
+                flex-direction: column;
+                gap: 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .game-board {
+                width: 320px;
+                height: 320px;
+            }
+            
+            .cell {
+                width: 40px;
+                height: 40px;
+                font-size: 1.5em;
+            }
+            
+            .rank-labels {
+                height: 320px;
+            }
+            
+            .file-labels {
+                width: 320px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>♔ 체스 게임 ♕</h1>
+        </div>
+
+        <div class="game-info">
+            <div class="room-info">
+                <div class="room-code" id="roomCode">방 코드: -</div>
+                <div>친구에게 공유하세요!</div>
+            </div>
+            
+            <div class="player-info">
+                <div class="player" id="playerWhite">
+                    <div class="player-symbol">♔</div>
+                    <div class="player-label">화이트 (선공)</div>
+                </div>
+                <div class="player" id="playerBlack">
+                    <div class="player-symbol">♚</div>
+                    <div class="player-label">블랙 (후공)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="status" id="gameStatus">게임을 준비하는 중...</div>
+
+        <div id="waitingArea" class="waiting-message">
+            <div class="waiting-spinner"></div>
+            상대방이 참가하기를 기다리는 중입니다...
+        </div>
+
+        <div id="gameArea" style="display: none;">
+            <div class="captured-pieces">
+                <div class="captured-section">
+                    <div class="captured-title">블랙이 잡은 기물</div>
+                    <div class="captured-list" id="capturedWhite"></div>
+                </div>
+                
+                <div class="captured-section">
+                    <div class="captured-title">화이트가 잡은 기물</div>
+                    <div class="captured-list" id="capturedBlack"></div>
+                </div>
+            </div>
+
+            <div class="game-board-container">
+                <div class="coordinates">
+                    <div style="display: flex;">
+                        <div class="rank-labels">
+                            <div>8</div><div>7</div><div>6</div><div>5</div>
+                            <div>4</div><div>3</div><div>2</div><div>1</div>
+                        </div>
+                        <div class="game-board" id="gameBoard">
+                            <!-- 8x8 = 64개 셀이 JavaScript로 생성됩니다 -->
+                        </div>
+                    </div>
+                    <div class="file-labels">
+                        <div>a</div><div>b</div><div>c</div><div>d</div>
+                        <div>e</div><div>f</div><div>g</div><div>h</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn" onclick="copyRoomCode()">📋 방 코드 복사</button>
+            <button class="btn secondary" onclick="newGame()">🔄 새 게임</button>
+            <a href="/" class="btn secondary">🏠 로비로 돌아가기</a>
+        </div>
+
+        <div class="game-rules">
+            <div class="rules-title">♔ 체스 게임 규칙</div>
+            <ul class="rules-list">
+                <li>화이트가 먼저 시작합니다 (선공)</li>
+                <li>각 기물은 고유한 움직임 패턴을 가집니다</li>
+                <li>상대방의 킹을 체크메이트하면 승리!</li>
+                <li>기물을 선택한 후 이동할 위치를 클릭하세요</li>
+                <li>상대방의 차례를 기다려주세요</li>
+            </ul>
+        </div>
+
+        <div id="message" style="display: none;"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentRoomId = null;
+        let mySymbol = null;
+        let gameBoard = [];
+        let currentPlayer = 'white';
+        let isMyTurn = false;
+        let gameActive = false;
+        let selectedCell = null;
+        let validMoves = [];
+        let capturedPieces = { white: [], black: [] };
+
+        // 체스 기물 유니코드
+        const pieceSymbols = {
+            // 백색 기물 (대문자)
+            'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
+            // 흑색 기물 (소문자)  
+            'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
+        };
+
+        // URL 파라미터에서 방 정보 가져오기
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomFromUrl = urlParams.get('room');
+        const symbolFromUrl = urlParams.get('symbol');
+
+        if (roomFromUrl && symbolFromUrl) {
+            currentRoomId = roomFromUrl;
+            mySymbol = symbolFromUrl;
+            updateRoomDisplay();
+        }
+
+        // 게임 보드 생성
+        function createGameBoard() {
+            const gameBoard = document.getElementById('gameBoard');
+            gameBoard.innerHTML = '';
+
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    const cell = document.createElement('button');
+                    const index = row * 8 + col;
+                    
+                    cell.className = 'cell ' + ((row + col) % 2 === 0 ? 'light' : 'dark');
+                    cell.dataset.index = index;
+                    cell.onclick = () => handleCellClick(index);
+                    
+                    gameBoard.appendChild(cell);
+                }
+            }
+        }
+
+        // 방 정보 표시 업데이트
+        function updateRoomDisplay() {
+            if (currentRoomId) {
+                document.getElementById('roomCode').textContent = `방 코드: ${currentRoomId}`;
+            }
+        }
+
+        // 셀 클릭 처리
+        function handleCellClick(cellIndex) {
+    if (!isMyTurn || !gameActive) {
+        return;
+    }
+
+    if (selectedCell === null) {
+        // 기물 선택
+        const piece = gameBoard[cellIndex];
+        if (piece && isMyPiece(piece)) {
+            selectPiece(cellIndex);
+        }
+    } else {
+        // 기물 이동
+        if (cellIndex === selectedCell) {
+            // 같은 셀 클릭 시 선택 해제
+            deselectPiece();
+        } else if (validMoves.includes(cellIndex)) {
+            // 유효한 이동
+            makeMove(selectedCell, cellIndex);
+            deselectPiece();
+        } else {
+            // 다른 자신의 기물 선택
+            const piece = gameBoard[cellIndex];
+            if (piece && isMyPiece(piece)) {
+                selectPiece(cellIndex);
+            } else {
+                deselectPiece();
+            }
+        }
+    }
+}
+
+        // 자신의 기물인지 확인
+        function isMyPiece(piece) {
+            if (mySymbol === 'white') {
+                return piece === piece.toUpperCase(); // 대문자 = 백색
+            } else {
+                return piece === piece.toLowerCase(); // 소문자 = 흑색
+            }
+        }
+
+        // 기물 선택
+        function selectPiece(cellIndex) {
+            deselectPiece(); // 이전 선택 해제
+            
+            selectedCell = cellIndex;
+            validMoves = getValidMoves(cellIndex);
+            
+            // 선택된 셀 하이라이트
+            const cell = document.querySelector(`[data-index="${cellIndex}"]`);
+            cell.classList.add('selected');
+            
+            // 가능한 이동 하이라이트
+            validMoves.forEach(moveIndex => {
+                const moveCell = document.querySelector(`[data-index="${moveIndex}"]`);
+                if (gameBoard[moveIndex]) {
+                    moveCell.classList.add('capture-move');
+                } else {
+                    moveCell.classList.add('valid-move');
+                }
+            });
+        }
+
+        // 선택 해제
+        function deselectPiece() {
+            if (selectedCell !== null) {
+                const cell = document.querySelector(`[data-index="${selectedCell}"]`);
+                cell.classList.remove('selected');
+            }
+            
+            // 하이라이트 제거
+            document.querySelectorAll('.valid-move, .capture-move').forEach(cell => {
+                cell.classList.remove('valid-move', 'capture-move');
+            });
+            
+            selectedCell = null;
+            validMoves = [];
+        }
+
+        // 유효한 이동 계산 (간단 버전)
+        function getValidMoves(cellIndex) {
+            const piece = gameBoard[cellIndex];
+            const moves = [];
+            const row = Math.floor(cellIndex / 8);
+            const col = cellIndex % 8;
+            
+            if (!piece) return moves;
+            
+            const pieceType = piece.toLowerCase();
+            const isWhite = piece === piece.toUpperCase();
+            
+            switch (pieceType) {
+                case 'p': // 폰
+                    moves.push(...getPawnMoves(row, col, isWhite));
+                    break;
+                case 'r': // 룩
+                    moves.push(...getRookMoves(row, col, isWhite));
+                    break;
+                case 'n': // 나이트
+                    moves.push(...getKnightMoves(row, col, isWhite));
+                    break;
+                case 'b': // 비숍
+                    moves.push(...getBishopMoves(row, col, isWhite));
+                    break;
+                case 'q': // 퀸
+                    moves.push(...getQueenMoves(row, col, isWhite));
+                    break;
+                case 'k': // 킹
+                    moves.push(...getKingMoves(row, col, isWhite));
+                    break;
+            }
+            
+            return moves.filter(index => index >= 0 && index < 64);
+        }
+
+        // 폰 이동
+        function getPawnMoves(row, col, isWhite) {
+            const moves = [];
+            const direction = isWhite ? -1 : 1; // 백색은 위로, 흑색은 아래로
+            const startRow = isWhite ? 6 : 1;
+            
+            // 앞으로 한 칸
+            const frontIndex = (row + direction) * 8 + col;
+            if (row + direction >= 0 && row + direction < 8 && !gameBoard[frontIndex]) {
+                moves.push(frontIndex);
+                
+                // 시작 위치에서 두 칸
+                if (row === startRow) {
+                    const twoFrontIndex = (row + direction * 2) * 8 + col;
+                    if (!gameBoard[twoFrontIndex]) {
+                        moves.push(twoFrontIndex);
+                    }
+                }
+            }
+            
+            // 대각선 공격
+            [-1, 1].forEach(colOffset => {
+                const newCol = col + colOffset;
+                if (newCol >= 0 && newCol < 8) {
+                    const diagIndex = (row + direction) * 8 + newCol;
+                    const targetPiece = gameBoard[diagIndex];
+                    if (targetPiece && (targetPiece === targetPiece.toUpperCase()) !== isWhite) {
+                        moves.push(diagIndex);
+                    }
+                }
+            });
+            
+            return moves;
+        }
+
+        // 룩 이동
+        function getRookMoves(row, col, isWhite) {
+            const moves = [];
+            
+            // 상하좌우 방향
+            const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+            
+            directions.forEach(([dRow, dCol]) => {
+                for (let i = 1; i < 8; i++) {
+                    const newRow = row + dRow * i;
+                    const newCol = col + dCol * i;
+                    
+                    if (newRow < 0 || newRow >= 8 || newCol < 0 || newCol >= 8) break;
+                    
+                    const newIndex = newRow * 8 + newCol;
+                    const targetPiece = gameBoard[newIndex];
+                    
+                    if (!targetPiece) {
+                        moves.push(newIndex);
+                    } else {
+                        if ((targetPiece === targetPiece.toUpperCase()) !== isWhite) {
+                            moves.push(newIndex); // 적 기물 공격 가능
+                        }
+                        break; // 기물이 있으면 더 이상 진행 불가
+                    }
+                }
+            });
+            
+            return moves;
+        }
+
+        // 나이트 이동
+        function getKnightMoves(row, col, isWhite) {
+            const moves = [];
+            const knightMoves = [
+                [-2, -1], [-2, 1], [-1, -2], [-1, 2],
+                [1, -2], [1, 2], [2, -1], [2, 1]
+            ];
+            
+            knightMoves.forEach(([dRow, dCol]) => {
+                const newRow = row + dRow;
+                const newCol = col + dCol;
+                
+                if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
+                    const newIndex = newRow * 8 + newCol;
+                    const targetPiece = gameBoard[newIndex];
+                    
+                    if (!targetPiece || (targetPiece === targetPiece.toUpperCase()) !== isWhite) {
+                        moves.push(newIndex);
+                    }
+                }
+            });
+            
+            return moves;
+        }
+
+        // 비숍 이동
+        function getBishopMoves(row, col, isWhite) {
+            const moves = [];
+            const directions = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+            
+            directions.forEach(([dRow, dCol]) => {
+                for (let i = 1; i < 8; i++) {
+                    const newRow = row + dRow * i;
+                    const newCol = col + dCol * i;
+                    
+                    if (newRow < 0 || newRow >= 8 || newCol < 0 || newCol >= 8) break;
+                    
+                    const newIndex = newRow * 8 + newCol;
+                    const targetPiece = gameBoard[newIndex];
+                    
+                    if (!targetPiece) {
+                        moves.push(newIndex);
+                    } else {
+                        if ((targetPiece === targetPiece.toUpperCase()) !== isWhite) {
+                            moves.push(newIndex);
+                        }
+                        break;
+                    }
+                }
+            });
+            
+            return moves;
+        }
+
+        // 퀸 이동 (룩 + 비숍)
+        function getQueenMoves(row, col, isWhite) {
+            return [...getRookMoves(row, col, isWhite), ...getBishopMoves(row, col, isWhite)];
+        }
+
+        // 킹 이동
+        function getKingMoves(row, col, isWhite) {
+            const moves = [];
+            const directions = [
+                [-1, -1], [-1, 0], [-1, 1],
+                [0, -1],           [0, 1],
+                [1, -1],  [1, 0],  [1, 1]
+            ];
+            
+            directions.forEach(([dRow, dCol]) => {
+                const newRow = row + dRow;
+                const newCol = col + dCol;
+                
+                if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
+                    const newIndex = newRow * 8 + newCol;
+                    const targetPiece = gameBoard[newIndex];
+                    
+                    if (!targetPiece || (targetPiece === targetPiece.toUpperCase()) !== isWhite) {
+                        moves.push(newIndex);
+                    }
+                }
+            });
+            
+            return moves;
+        }
+
+        // 기물 이동
+        function makeMove(fromIndex, toIndex) {
+    if (!currentRoomId || !isMyTurn || !gameActive) {
+        return;
+    }
+
+    socket.emit('make-move', {
+        roomId: currentRoomId,
+        cellIndex: toIndex,
+        fromIndex: fromIndex,
+        gameType: 'chess'
+    });
+}
+        // 메시지 표시
+        function showMessage(text, type = '') {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = text;
+            messageEl.className = type;
+            messageEl.style.display = 'block';
+            
+            setTimeout(() => {
+                messageEl.style.display = 'none';
+            }, 3000);
+        }
+
+        // 게임 상태 업데이트
+        function updateGameStatus(status) {
+            document.getElementById('gameStatus').textContent = status;
+        }
+
+        // 게임 보드 업데이트
+        function updateBoard() {
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach((cell, index) => {
+                const piece = gameBoard[index];
+                cell.innerHTML = piece ? `<span class="piece">${pieceSymbols[piece] || piece}</span>` : '';
+                cell.disabled = !isMyTurn || !gameActive;
+            });
+            
+            deselectPiece(); // 선택 해제
+        }
+
+        // 턴 표시기 업데이트
+        function updateTurnIndicator() {
+            const playerWhite = document.getElementById('playerWhite');
+            const playerBlack = document.getElementById('playerBlack');
+            
+            playerWhite.classList.remove('active');
+            playerBlack.classList.remove('active');
+            
+            if (currentPlayer === 'white') {
+                playerWhite.classList.add('active');
+            } else {
+                playerBlack.classList.add('active');
+            }
+            
+            if (gameActive) {
+                if (isMyTurn) {
+                    updateGameStatus('당신의 차례입니다! 기물을 선택하세요.');
+                } else {
+                    updateGameStatus('상대방의 차례를 기다리는 중...');
+                }
+            }
+        }
+
+        // 잡힌 기물 업데이트
+        function updateCapturedPieces() {
+            document.getElementById('capturedWhite').innerHTML = 
+                capturedPieces.white.map(piece => pieceSymbols[piece] || piece).join(' ');
+            document.getElementById('capturedBlack').innerHTML = 
+                capturedPieces.black.map(piece => pieceSymbols[piece] || piece).join(' ');
+        }
+
+        // 방 코드 복사
+        function copyRoomCode() {
+            if (currentRoomId) {
+                navigator.clipboard.writeText(currentRoomId).then(() => {
+                    showMessage('방 코드가 복사되었습니다!', 'success');
+                }).catch(() => {
+                    showMessage('복사 실패. 방 코드: ' + currentRoomId, 'error');
+                });
+            }
+        }
+
+        // 새 게임 시작
+        function newGame() {
+            if (confirm('새 게임을 시작하시겠습니까?')) {
+                window.location.href = '/';
+            }
+        }
+
+        // Socket.io 이벤트 리스너들
+        socket.on('game-start', (data) => {
+            gameActive = true;
+            gameBoard = data.gameBoard || [];
+            currentPlayer = data.currentPlayer || 'white';
+            isMyTurn = mySymbol === currentPlayer;
+            
+            document.getElementById('waitingArea').style.display = 'none';
+            document.getElementById('gameArea').style.display = 'block';
+            
+            updateBoard();
+            updateTurnIndicator();
+            updateCapturedPieces();
+            updateGameStatus('게임이 시작되었습니다!');
+            
+            setTimeout(() => {
+                if (isMyTurn) {
+                    updateGameStatus('당신의 차례입니다! 기물을 선택하세요.');
+                } else {
+                    updateGameStatus('상대방의 차례를 기다리는 중...');
+                }
+            }, 2000);
+        });
+
+        socket.on('move-made', (data) => {
+            gameBoard = data.board;
+            currentPlayer = data.currentPlayer;
+            isMyTurn = mySymbol === currentPlayer;
+            
+            // 잡힌 기물 처리 (간단 버전)
+            if (data.capturedPiece) {
+                const isWhitePiece = data.capturedPiece === data.capturedPiece.toUpperCase();
+                if (isWhitePiece) {
+                    capturedPieces.white.push(data.capturedPiece);
+                } else {
+                    capturedPieces.black.push(data.capturedPiece);
+                }
+            }
+            
+            updateBoard();
+            updateTurnIndicator();
+            updateCapturedPieces();
+        });
+
+        socket.on('game-over', (data) => {
+            gameBoard = data.board;
+            gameActive = false;
+            
+            updateBoard();
+            
+            if (data.isDraw) {
+                updateGameStatus('🤝 무승부입니다!');
+            } else {
+                const winner = data.winner;
+                const isWinner = mySymbol === winner;
+                const winnerName = winner === 'white' ? '화이트' : '블랙';
+                
+                if (isWinner) {
+                    updateGameStatus(`🎉 축하합니다! ${winnerName} 승리!`);
+                } else {
+                    updateGameStatus(`😢 ${winnerName}이 승리했습니다!`);
+                }
+            }
+            
+            // 10초 후 새 게임 준비
+            setTimeout(() => {
+                gameBoard = [
+                    'r','n','b','q','k','b','n','r',
+                    'p','p','p','p','p','p','p','p',
+                    '','','','','','','','',
+                    '','','','','','','','',
+                    '','','','','','','','',
+                    '','','','','','','','',
+                    'P','P','P','P','P','P','P','P',
+                    'R','N','B','Q','K','B','N','R'
+                ];
+                currentPlayer = 'white';
+                isMyTurn = mySymbol === 'white';
+                gameActive = true;
+                capturedPieces = { white: [], black: [] };
+                
+                updateBoard();
+                updateTurnIndicator();
+                updateCapturedPieces();
+            }, 10000);
+        });
+
+        socket.on('player-left', () => {
+            gameActive = false;
+            updateGameStatus('상대방이 나갔습니다. 새로운 플레이어를 기다리는 중...');
+            
+            document.getElementById('waitingArea').style.display = 'block';
+            document.getElementById('gameArea').style.display = 'none';
+        });
+
+        socket.on('move-error', (message) => {
+            showMessage(message, 'error');
+            deselectPiece();
+        });
+
+       // gomoku.html의 JavaScript 부분에서 수정이 필요한 함수들:
+       window.addEventListener('load', () => {
+    createGameBoard();
+    updateRoomDisplay();
+    
+    if (roomFromUrl && symbolFromUrl) {
+        // URL에서 온 경우 (로비에서 클릭)
+        currentRoomId = roomFromUrl;
+        mySymbol = symbolFromUrl;
+        
+        if (symbolFromUrl === 'white') {
+            // 방 생성자 (새 방 만들기를 선택한 경우)
+            socket.emit('create-room', 'chess', (response) => {
+                if (response.success) {
+                    currentRoomId = response.roomId;
+                    mySymbol = response.symbol;
+                    updateRoomDisplay();
+                    document.getElementById('waitingArea').style.display = 'block';
+                    document.getElementById('gameArea').style.display = 'none';
+                    updateGameStatus('상대방이 참가하기를 기다리는 중...');
+                } else {
+                    showMessage('방 생성 실패: ' + response.message, 'error');
+                    setTimeout(() => window.location.href = '/', 2000);
+                }
+            });
+        } else {
+            // 방 참가자 (방 참가하기를 선택한 경우)
+            socket.emit('join-room', 'chess', roomFromUrl, (response) => {
+                if (response.success) {
+                    currentRoomId = response.roomId;
+                    mySymbol = response.symbol;
+                    updateRoomDisplay();
+                } else {
+                    showMessage('방 참가 실패: ' + response.message, 'error');
+                    setTimeout(() => window.location.href = '/', 2000);
+                }
+            });
+        }
+    } else {
+        // URL 파라미터가 없으면 로비로 리다이렉트
+        window.location.href = '/';
+    }
+});
+
+        // 브라우저 뒤로가기 방지 (게임 중)
+        window.addEventListener('beforeunload', (e) => {
+            if (gameActive) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
+        console.log('♔ 체스 게임이 로드되었습니다! ♕');
+    </script>
+</body>
+</html>
